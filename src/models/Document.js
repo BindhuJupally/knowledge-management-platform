@@ -16,7 +16,20 @@ const documentSchema = new mongoose.Schema(
     fileType: {
       type: String,
       required: true,
-      enum: ['pdf', 'docx', 'txt', 'md'],
+      enum: ['pdf', 'docx', 'txt', 'md', 'website'],
+    },
+    sourceUrl: {
+      type: String,
+      trim: true,
+    },
+    title: {
+      type: String,
+      trim: true,
+    },
+    crawlSessionId: {
+      type: String,
+      trim: true,
+      index: true,
     },
     fileId: {
       type: mongoose.Schema.Types.ObjectId,

@@ -6,6 +6,7 @@ const {
   deleteDocument,
   downloadDocument,
 } = require('../controllers/document.controller');
+const { crawlAndIngestWebsite } = require('../controllers/website.controller');
 
 const router = express.Router();
 
@@ -18,6 +19,7 @@ const upload = multer({
 });
 
 router.post('/', upload.single('file'), uploadDocument);
+router.post('/website', crawlAndIngestWebsite);
 router.get('/', listDocuments);
 router.get('/:id/download', downloadDocument);
 router.delete('/:id', deleteDocument);

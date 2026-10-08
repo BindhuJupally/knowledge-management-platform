@@ -51,6 +51,8 @@ A multi-tenant knowledge management and retrieval platform. **Phase 1** establis
   - **Text / Markdown**: UTF-8 stream decoding
 - **Sliding-Window Chunking**: 450-word chunks with a 50-word overlap to ensure search queries preserve contextual boundaries across paragraphs.
 - **Native Okapi BM25 Retrieval**: Transparent, self-contained implementation of the Robertson-Spärck Jones Okapi BM25 algorithm ($k_1=1.5, b=0.75$) with no external search cluster dependencies.
+- **Website Crawling & Ingestion (Crawl4AI)**: Scrapes single pages or executes BFS multi-page deep crawls to clean Markdown, preserves raw content in MongoDB GridFS, chunks and indexes into BM25.
+- **SSRF Protection & URL Validation**: Enterprise-grade URL validation blocking loopback, RFC 1918 private IPv4, IPv6 local ranges, cloud metadata (169.254.169.254), non-HTTP/HTTPS protocols, and DNS rebinding attacks.
 
 ---
 
@@ -83,25 +85,33 @@ knowledge-management-platform/
 │   │
 │   ├── controllers/
 │   │   ├── document.controller.js # Upload, listing, download, and deletion
-│   │   └── query.controller.js    # BM25 query retrieval
+│   │   ├── query.controller.js    # BM25 query retrieval
+│   │   └── website.controller.js  # Website crawl and ingestion handler
 │   │
 │   ├── routes/
-│   │   ├── document.routes.js     # /api/documents routes
+│   │   ├── document.routes.js     # /api/documents routes (file & website)
 │   │   └── query.routes.js        # /api/query routes
+│   │
+│   ├── scripts/
+│   │   └── crawler.py             # Python runner bridging Crawl4AI
 │   │
 │   ├── services/
 │   │   ├── extraction.service.js  # Buffer-based text extraction
 │   │   ├── chunking.service.js    # Sliding window chunking logic
 │   │   ├── gridfs.service.js      # MongoDB GridFS upload/download/delete
-│   │   └── retrieval.service.js   # Native Okapi BM25 retrieval engine
+│   │   ├── retrieval.service.js   # Native Okapi BM25 retrieval engine
+│   │   └── website.service.js     # Crawling orchestration & ingestion
 │   │
 │   └── utils/
-│       └── tokenizer.js           # Text normalization and tokenization
+│       ├── tokenizer.js           # Text normalization and tokenization
+│       └── urlValidator.js        # SSRF defense & URL validation
 │
 ├── tests/                         # Unit tests (Jest)
 │   ├── tokenizer.test.js
 │   ├── chunking.test.js
-│   └── extraction.test.js
+│   ├── extraction.test.js
+│   ├── urlValidator.test.js
+│   └── website.test.js
 │
 ├── .env                           # Environment variables
 ├── .gitignore
@@ -167,7 +177,46 @@ Uploads a document, extracts text, chunks and tokenizes content, and stores the 
 
 ---
 
-### 2. Query Evidence Chunks (BM25 Retrieval)
+### 2. Ingest Website (Single-Page & BFS Deep Crawl)
+Crawls a public webpage or executes a multi-page BFS deep crawl via Crawl4AI with built-in SSRF protection, stores extracted Markdown in MongoDB GridFS, and indexes chunks for BM25 retrieval.
+
+- **Method**: `POST`
+- **Endpoint**: `/api/documents/website`
+- **Content-Type**: `application/json`
+- **Body**:
+```json
+{
+  "tenantId": "tenant1",
+  "url": "https://example.com/docs",
+  "deepCrawl": false,
+  "maxPages": 10,
+  "maxDepth": 2
+}
+```
+
+**Example Response (`201 Created`):**
+```json
+{
+  "message": "Successfully ingested 1 webpage(s)",
+  "crawlSessionId": "crawl_1770570000000_a1b2c3d4",
+  "deepCrawl": false,
+  "pagesIngested": 1,
+  "documents": [
+    {
+      "documentId": "65b7a1c4e92a40775441a635",
+      "fileId": "65b7a1c5e92a40775441a636",
+      "url": "https://example.com/docs",
+      "title": "Example Documentation",
+      "chunksCreated": 4
+    }
+  ],
+  "totalChunksCreated": 4
+}
+```
+
+---
+
+### 3. Query Evidence Chunks (BM25 Retrieval)
 Executes a lexical BM25 query across all document chunks belonging to the specified tenant.
 
 - **Method**: `POST`
@@ -204,7 +253,7 @@ Executes a lexical BM25 query across all document chunks belonging to the specif
 
 ---
 
-### 3. List Documents
+### 4. List Documents
 Returns all active documents for a given tenant.
 
 - **Method**: `GET`
@@ -230,7 +279,7 @@ Returns all active documents for a given tenant.
 
 ---
 
-### 4. Download Original Document
+### 5. Download Original Document
 Streams the original binary file directly out of MongoDB GridFS.
 
 - **Method**: `GET`
@@ -239,7 +288,7 @@ Streams the original binary file directly out of MongoDB GridFS.
 
 ---
 
-### 5. Delete Document
+### 6. Delete Document
 Deletes the document metadata, cascades chunk deletion, and purges the binary file from GridFS.
 
 - **Method**: `DELETE`
