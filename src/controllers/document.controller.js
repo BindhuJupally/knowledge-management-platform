@@ -9,6 +9,7 @@ const {
   deleteFromGridFS,
 } = require('../services/gridfs.service');
 const { tokenize } = require('../utils/tokenizer');
+const embeddingService = require('../services/embedding.service');
 
 /**
  * Upload, ingest, and store a document in MongoDB GridFS + chunks
@@ -61,8 +62,14 @@ async function uploadDocument(req, res) {
     // 4. Chunk text
     const rawChunks = createChunks(text, { chunkSize: 450, overlap: 50 });
 
-    // 5. Tokenize and prepare chunk documents
-    const chunkDocs = rawChunks.map((chunk) => {
+    // 5. Generate embeddings for chunks
+    const chunkTexts = rawChunks.map((chunk) => chunk.text);
+    const embeddings = await embeddingService.embedBatch(chunkTexts);
+    const modelInfo = embeddingService.getModelInfo();
+    const now = new Date();
+
+    // 6. Tokenize and prepare chunk documents
+    const chunkDocs = rawChunks.map((chunk, idx) => {
       const tokens = tokenize(chunk.text);
       return {
         tenantId,
@@ -71,6 +78,10 @@ async function uploadDocument(req, res) {
         text: chunk.text,
         tokens,
         tokenCount: tokens.length,
+        embedding: embeddings[idx],
+        embeddingModel: modelInfo.model,
+        embeddingVersion: modelInfo.version,
+        embeddedAt: now,
         metadata: {
           ...extractedMeta,
           ...chunk.metadata,
@@ -78,7 +89,7 @@ async function uploadDocument(req, res) {
       };
     });
 
-    // 6. Bulk insert chunks
+    // 7. Bulk insert chunks
     if (chunkDocs.length > 0) {
       await Chunk.insertMany(chunkDocs);
     }

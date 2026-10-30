@@ -7,6 +7,7 @@ const Chunk = require('../models/Chunk');
 const { createChunks } = require('./chunking.service');
 const gridfsService = require('./gridfs.service');
 const { tokenize } = require('../utils/tokenizer');
+const embeddingService = require('./embedding.service');
 
 /**
  * Determine the python executable path (prefer project .venv)
@@ -116,8 +117,14 @@ async function ingestSingleWebpage({ tenantId, url, title, markdown, crawlSessio
   // 3. Chunk the extracted Markdown
   const rawChunks = createChunks(markdown, { chunkSize: 450, overlap: 50 });
 
-  // 4. Tokenize & prepare Chunk records
-  const chunkDocs = rawChunks.map((chunk) => {
+  // 4. Generate embeddings for chunks
+  const chunkTexts = rawChunks.map((chunk) => chunk.text);
+  const embeddings = await embeddingService.embedBatch(chunkTexts);
+  const modelInfo = embeddingService.getModelInfo();
+  const now = new Date();
+
+  // 5. Tokenize & prepare Chunk records
+  const chunkDocs = rawChunks.map((chunk, idx) => {
     const tokens = tokenize(chunk.text);
     return {
       tenantId,
@@ -126,6 +133,10 @@ async function ingestSingleWebpage({ tenantId, url, title, markdown, crawlSessio
       text: chunk.text,
       tokens,
       tokenCount: tokens.length,
+      embedding: embeddings[idx],
+      embeddingModel: modelInfo.model,
+      embeddingVersion: modelInfo.version,
+      embeddedAt: now,
       metadata: {
         source_type: 'website',
         url,
@@ -136,7 +147,7 @@ async function ingestSingleWebpage({ tenantId, url, title, markdown, crawlSessio
     };
   });
 
-  // 5. Bulk insert chunks
+  // 6. Bulk insert chunks
   if (chunkDocs.length > 0) {
     await Chunk.insertMany(chunkDocs);
   }

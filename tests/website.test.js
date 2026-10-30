@@ -1,6 +1,7 @@
 const dns = require('dns').promises;
 const { crawlAndIngestWebsite } = require('../src/controllers/website.controller');
 const websiteService = require('../src/services/website.service');
+const embeddingService = require('../src/services/embedding.service');
 const Document = require('../src/models/Document');
 const Chunk = require('../src/models/Chunk');
 const gridfsService = require('../src/services/gridfs.service');
@@ -115,6 +116,10 @@ describe('Website Ingestion Controller and Service', () => {
         ...data,
       }));
       jest.spyOn(Chunk, 'insertMany').mockResolvedValue([]);
+      // Mock embedding so tests don't require a live COHERE_API_KEY
+      jest.spyOn(embeddingService, 'embedBatch').mockImplementation(async (texts) =>
+        texts.map(() => new Array(384).fill(0))
+      );
     });
 
     afterEach(() => {
@@ -151,11 +156,13 @@ describe('Website Ingestion Controller and Service', () => {
         })
       );
 
-      // Verify Chunk insertion with metadata
+      // Verify Chunk insertion with metadata and embeddings
       expect(Chunk.insertMany).toHaveBeenCalledWith(
         expect.arrayContaining([
           expect.objectContaining({
             tenantId: 'tenant1',
+            embedding: expect.any(Array),
+            embeddingModel: expect.any(String),
             metadata: expect.objectContaining({
               source_type: 'website',
               url: 'https://example.com/intro',

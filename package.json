@@ -6,7 +6,10 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "jest --runInBand --detectOpenHandles"
+    "test": "jest --runInBand --detectOpenHandles",
+    "index:vector": "node src/scripts/createVectorIndex.js",
+    "backfill:embeddings": "node src/scripts/backfillEmbeddings.js",
+    "validate:semantic": "node src/scripts/validateSemanticPerformance.js"
   },
   "keywords": [
     "knowledge-management-platform",
